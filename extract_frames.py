@@ -1,61 +1,68 @@
-import cv2
 import os
-import pycolmap
-#import open3d as o3d
+import shutil
+from PIL import Image
 
+# Define the source directories and target directories
+npz_src_folder = 'camera_npy'
+png_src_folder = 'capture1/rgb-raw'
+cameras_target_folder = 'Multiview-3DMM-Fitting/bruno-face/cameras'
+images_target_folder = 'Multiview-3DMM-Fitting/bruno-face/images'
 
-def extract_frames(video_path, output_folder):
-    cap = cv2.VideoCapture(video_path)
-    frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    success, image = cap.read()
-    count = 0
+# Create the target directories if they don't exist
+os.makedirs(cameras_target_folder, exist_ok=True)
+os.makedirs(images_target_folder, exist_ok=True)
 
-    if not os.path.exists(output_folder):
-        os.makedirs(output_folder)
+camera_ids = []
+folder_name = f"0000"
+camera_subfolder = os.path.join(cameras_target_folder, folder_name)
+os.makedirs(camera_subfolder, exist_ok=True)
+# Process .npz files
+for i in range(1, 102):  # Adjusted range to start from 1
+      # Create folder name with leading zeros
+    npz_file_name = f"{i:06d}.npz"  # File name with 6 digits
 
-    while success:
-        cv2.imwrite(f"{output_folder}/frame{count:04d}.png", image)
-        success, image = cap.read()
-        count += 1
+    
 
-    cap.release()
-    return frame_count
-if __name__ == '__main__':
-    # Example usage
-    video_path = 'data/tazza.mp4'
-    output_folder = 'extracted_frames'
-    frame_count = extract_frames(video_path, output_folder)
+    # Move the .npz file
+    npz_src_path = os.path.join(npz_src_folder, npz_file_name)
+    npz_dest_path = os.path.join(camera_subfolder, f"camera_{i:04d}.npz")
+    if os.path.exists(npz_src_path):
+        shutil.move(npz_src_path, npz_dest_path)
+        camera_ids.append(f"{i:04d}")
+    
 
-    # Paths
-    image_path = output_folder
-    database_path = 'database.db'
-    output_path = 'output'
-    mvs_path = os.path.join(output_path , "mvs")
+# Process .png files
+image_subfolder = os.path.join(images_target_folder, folder_name)
+os.makedirs(image_subfolder, exist_ok=True)
+for i in range(1, 102):  # Adjusted range to start from 1
+      # Create folder name with leading zeros
+    png_file_name = f"{i:06d}.png"  # File name with 6 digits
 
-    # Make sure the output path exists
-    if not os.path.exists(output_path):
-        os.makedirs(output_path)
+    # Create subdirectory in images folder
+    
 
-    # Feature extraction
-    # Correcting the function call for feature extraction
-    #pycolmap.extract_features(database_path, image_path, sift_options={"max_num_features": 32})
+    # Crop the image to a square and move it
+    png_src_path = os.path.join(png_src_folder, png_file_name)
+    png_dest_path = os.path.join(image_subfolder, f"image_{i:04d}.png")
+    camera_id = f"{i:04d}"
+    if os.path.exists(png_src_path) and camera_id in camera_ids :
+        with Image.open(png_src_path) as img:
+            # Crop the image to a square
+            width, height = img.size
+            min_side = min(width, height)
+            left = (width - min_side) / 2
+            top = (height - min_side) / 2
+            right = (width + min_side) / 2
+            bottom = (height + min_side) / 2
+            img_cropped = img.crop((left, top, right, bottom))
+            
+            # Save the cropped image
+            img_cropped.save(png_dest_path)
+            
+            # Print the image size
+            print(f"Image image_{i:04d}.png size: {img_cropped.size}")
 
+    
 
-    # Feature matching
-    pycolmap.match_sequential(
-        database_path=database_path
-    )
-
-    # Dense reconstruction
-    maps = pycolmap.incremental_mapping(database_path, image_path, output_path)
-    maps[0].write(output_path)
-    # dense reconstruction
-    pycolmap.undistort_images(mvs_path, output_path, image_path)
-    pycolmap.patch_match_stereo(mvs_path)  # requires compilation with CUDA
-    pycolmap.stereo_fusion(mvs_path / "dense.ply", mvs_path)
-
-    # Load the point cloud
-    point_cloud = o3d.io.read_point_cloud(os.path.join(mvs_path, 'dense.ply'))
-
-    # Visualize the point cloud
-    o3d.visualization.draw_geometries([point_cloud])
+print("Files have been moved and cropped successfully.")
+print("Image IDs:", camera_ids)
